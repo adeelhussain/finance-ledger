@@ -416,10 +416,20 @@
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-handle"></div>
       <h2 id="quickTitle">☕ Tea</h2>
-      <div class="subtitle">Today · Tap Save or press Enter</div>
+      <div class="subtitle">Choose date and amount · Save stays open</div>
+
+      <label>📅 Date</label>
+      <input type="date" id="quickDate" required>
+
       <label>Amount (PKR)</label>
       <input type="number" class="amount" id="quickAmount" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
       <div class="chips" id="quickChips"></div>
+
+      <label>Account</label>
+      <select id="quickAccount">
+        <option value="">Loading accounts…</option>
+      </select>
+
       <div class="modal-actions">
         <button class="modal-btn btn-cancel" onclick="closeModal('quickModal')">Cancel</button>
         <button class="modal-btn btn-save" id="quickSaveBtn" onclick="saveQuick()">Save</button>
@@ -432,9 +442,14 @@
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-handle"></div>
       <h2>➕ Other Entry</h2>
-      <div class="subtitle">Today · Pick category & amount</div>
+      <div class="subtitle">Search a category · Save stays open</div>
+
+      <label>📅 Date</label>
+      <input type="date" id="otherDate" required>
 
       <label>Category</label>
+      <input type="search" id="categorySearch" autocomplete="off"
+        placeholder="Search categories…" oninput="filterOtherCategories()">
       <select id="otherCategory">
         <option value="">-- Select --</option>
       </select>
@@ -444,6 +459,11 @@
 
       <label>Note (optional)</label>
       <input type="text" id="otherNote" autocomplete="off" placeholder="e.g. AC repair">
+
+      <label>Account</label>
+      <select id="otherAccount">
+        <option value="">Loading accounts…</option>
+      </select>
 
       <div class="modal-actions">
         <button class="modal-btn btn-cancel" onclick="closeModal('otherModal')">Cancel</button>
@@ -528,11 +548,14 @@
     // STATE
     // ============================================================
     let categories = [];
+    let accounts = [];
     let isSyncing = false;
     let accessToken = '';
     let accessTokenExpiresAt = 0;
     let googleTokenClient = null;
     let pendingAuthRequest = null;
+    let autoAuthInProgress = false;
+    let lastAutoAuthFailureAt = 0;
 
     function isGoogleConfigured() {
       return GOOGLE_CLIENT_ID &&
@@ -727,17 +750,29 @@
         updateCategoryFetchTime(cached.fetchedAt);
       }
 
+      const cachedAccounts = await dbGet(STORE_CACHE, 'accounts');
+      if (cachedAccounts && Array.isArray(cachedAccounts.value)) {
+        accounts = cachedAccounts.value;
+      }
+      populateAccountSelectors();
+
       // Render recent (queue + remote cache)
       renderRecent();
 
       // Update network status
       updateNetworkStatus();
       updateAuthUi();
-      window.addEventListener('online', () => { updateNetworkStatus(); syncQueue(); });
+      window.addEventListener('online', () => { updateNetworkStatus(); authenticateOnStart(); });
       window.addEventListener('offline', updateNetworkStatus);
 
-      // Sync any pending queue on boot
-      syncQueue();
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && !hasValidAccessToken()) authenticateOnStart();
+      });
+
+      // Obtain a fresh in-memory access token whenever the installed PWA opens.
+      // If the browser blocks the automatic OAuth window, Connect Google stays
+      // visible as the user-gesture fallback.
+      authenticateOnStart();
 
       // Auto-sync every 30 seconds when online
       setInterval(() => { if (navigator.onLine) syncQueue(); }, 30000);
@@ -751,6 +786,25 @@
     // ============================================================
     // NETWORK / SYNC
     // ============================================================
+    async function authenticateOnStart() {
+      if (autoAuthInProgress || !navigator.onLine || !isGoogleConfigured() || hasValidAccessToken()) return;
+      if (Date.now() - lastAutoAuthFailureAt < 60000) return;
+      autoAuthInProgress = true;
+      try {
+        await requestGoogleAccess();
+        await refreshCategories();
+        await syncQueue();
+        await fetchRecent();
+        await renderRecent();
+      } catch (_) {
+        lastAutoAuthFailureAt = Date.now();
+      } finally {
+        autoAuthInProgress = false;
+        updateAuthUi();
+        updateNetworkStatus();
+      }
+    }
+
     function updateNetworkStatus() {
       const dot = document.getElementById('statusDot');
       const text = document.getElementById('statusText');
@@ -816,12 +870,15 @@
       try {
         if (!hasValidAccessToken() && interactive) await requestGoogleAccess();
         if (!hasValidAccessToken()) return { success: false, message: 'Connect Google to refresh categories' };
-        const data = await callFinanceApi({ action: 'getCategories' });
+        const data = await callFinanceApi({ action: 'getReferenceData' });
         if (data.success && Array.isArray(data.categories)) {
           const fetchedAt = Date.now();
           categories = data.categories;
+          accounts = Array.isArray(data.accounts) ? data.accounts : [];
           await dbPut(STORE_CACHE, { key: 'categories', value: categories, fetchedAt });
+          await dbPut(STORE_CACHE, { key: 'accounts', value: accounts, fetchedAt });
           populateOtherCategory();
+          populateAccountSelectors();
           updateCategoryFetchTime(fetchedAt);
           return { success: true, count: categories.length, fetchedAt };
         }
@@ -865,15 +922,55 @@
     }
 
     function populateOtherCategory() {
+      filterOtherCategories();
+    }
+
+    function filterOtherCategories() {
       const sel = document.getElementById('otherCategory');
+      const search = document.getElementById('categorySearch');
+      if (!sel) return;
+      const current = sel.value;
+      const query = search ? search.value.trim().toLowerCase() : '';
       sel.innerHTML = '<option value="">-- Select --</option>';
-      categories.forEach(c => {
-        if (c.name === 'Tea' || c.name === 'Lunch') return;
-        const opt = document.createElement('option');
-        opt.value = c.name;
-        opt.textContent = c.type === 'Income' ? '↑ ' + c.name : c.name;
-        sel.appendChild(opt);
+      categories
+        .filter(c => !query || c.name.toLowerCase().includes(query))
+        .forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.name;
+          opt.textContent = c.type === 'Income' ? '↑ ' + c.name : c.name;
+          sel.appendChild(opt);
+        });
+      if (Array.from(sel.options).some(option => option.value === current)) sel.value = current;
+    }
+
+    function defaultAccount() {
+      const abl = accounts.find(account => String(account).trim().toUpperCase() === 'ABL');
+      return abl || accounts[0] || '';
+    }
+
+    function populateAccountSelectors() {
+      ['quickAccount', 'otherAccount'].forEach(id => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        const previous = select.value;
+        select.innerHTML = '';
+        if (accounts.length === 0) {
+          select.innerHTML = '<option value="">No accounts cached</option>';
+          return;
+        }
+        accounts.forEach(account => {
+          const option = document.createElement('option');
+          option.value = account;
+          option.textContent = account;
+          select.appendChild(option);
+        });
+        select.value = accounts.includes(previous) ? previous : defaultAccount();
       });
+    }
+
+    function selectDefaultAccount(id) {
+      const select = document.getElementById(id);
+      if (select) select.value = defaultAccount();
     }
 
     // ============================================================
@@ -1057,6 +1154,7 @@
           category: q.category,
           amount: q.amount,
           notes: q.notes,
+          account: q.account || '',
           date: q.date,
           pending: true,
           status: q.status,
@@ -1103,7 +1201,7 @@
           <div class="recent-item">
             <div>
               <div class="recent-cat">${escapeHtml(r.category)}${pill}</div>
-              <div class="recent-meta">${escapeHtml(r.date)}${r.notes ? ' · ' + escapeHtml(r.notes) : ''}</div>
+              <div class="recent-meta">${escapeHtml(r.date)}${r.account ? ' · ' + escapeHtml(r.account) : ''}${r.notes ? ' · ' + escapeHtml(r.notes) : ''}</div>
               ${r.error && r.lastError ? `<div class="recent-meta" style="color:#991B1B;">${escapeHtml(r.lastError)}</div>` : ''}
               ${queueActions}
             </div>
@@ -1140,6 +1238,8 @@
       document.getElementById('quickTitle').textContent = title;
       const input = document.getElementById('quickAmount');
       input.value = defaults[category] || '';
+      document.getElementById('quickDate').value = todayString();
+      selectDefaultAccount('quickAccount');
 
       const chipBox = document.getElementById('quickChips');
       chipBox.innerHTML = '';
@@ -1156,9 +1256,13 @@
     }
 
     function openOtherModal() {
+      document.getElementById('otherDate').value = todayString();
+      document.getElementById('categorySearch').value = '';
+      populateOtherCategory();
       document.getElementById('otherCategory').value = '';
       document.getElementById('otherAmount').value = '';
       document.getElementById('otherNote').value = '';
+      selectDefaultAccount('otherAccount');
       document.getElementById('otherModal').classList.add('active');
     }
 
@@ -1171,7 +1275,11 @@
 
     async function saveQuick() {
       const raw = parseFloat(document.getElementById('quickAmount').value);
+      const date = document.getElementById('quickDate').value;
+      const account = document.getElementById('quickAccount').value;
+      if (!date) { showToast('Select a date', 'error'); return; }
       if (isNaN(raw) || raw < 0) { showToast('Enter a valid amount', 'error'); return; }
+      if (!account) { showToast('Select an account', 'error'); return; }
 
       const btn = document.getElementById('quickSaveBtn');
       if (btn.disabled) return;
@@ -1179,24 +1287,30 @@
 
       const amount = raw === 0 ? 0 : -Math.abs(raw);
       await addEntry({
-        date: todayString(),
+        date: date,
         category: quickContext.category,
         amount: amount,
         vendor: '',
+        account: account,
         notes: raw === 0 ? 'Closed' : ''
       });
 
       btn.disabled = false; btn.textContent = 'Save';
-      closeModal('quickModal');
+      document.getElementById('quickAmount').value = '';
       showLocalSaveToast();
+      document.getElementById('quickAmount').focus();
     }
 
     async function saveOther() {
       const category = document.getElementById('otherCategory').value;
+      const date = document.getElementById('otherDate').value;
       const raw = parseFloat(document.getElementById('otherAmount').value);
       const note = document.getElementById('otherNote').value;
+      const account = document.getElementById('otherAccount').value;
+      if (!date) { showToast('Select a date', 'error'); return; }
       if (!category) { showToast('Pick a category', 'error'); return; }
       if (isNaN(raw)) { showToast('Enter a valid amount', 'error'); return; }
+      if (!account) { showToast('Select an account', 'error'); return; }
 
       const btn = document.getElementById('otherSaveBtn');
       if (btn.disabled) return;
@@ -1207,32 +1321,43 @@
       const amount = raw === 0 ? 0 : (isIncome ? Math.abs(raw) : -Math.abs(raw));
 
       await addEntry({
-        date: todayString(),
+        date: date,
         category: category,
         amount: amount,
         vendor: '',
+        account: account,
         notes: note
       });
 
       btn.disabled = false; btn.textContent = 'Save';
-      closeModal('otherModal');
+      document.getElementById('categorySearch').value = '';
+      document.getElementById('otherCategory').value = '';
+      document.getElementById('otherAmount').value = '';
+      document.getElementById('otherNote').value = '';
+      populateOtherCategory();
       showLocalSaveToast();
+      document.getElementById('categorySearch').focus();
     }
 
     async function quickClosed(category) {
+      const account = defaultAccount();
+      if (!account) { showToast('Refresh accounts before saving', 'error'); return; }
       await addEntry({
         date: todayString(),
         category: category,
         amount: 0,
         vendor: '',
+        account: account,
         notes: 'Closed'
       });
       showLocalSaveToast();
     }
 
     async function quickBoth() {
-      await addEntry({ date: todayString(), category: 'Tea', amount: 0, vendor: '', notes: 'Closed' });
-      await addEntry({ date: todayString(), category: 'Lunch', amount: 0, vendor: '', notes: 'Closed' });
+      const account = defaultAccount();
+      if (!account) { showToast('Refresh accounts before saving', 'error'); return; }
+      await addEntry({ date: todayString(), category: 'Tea', amount: 0, vendor: '', account, notes: 'Closed' });
+      await addEntry({ date: todayString(), category: 'Lunch', amount: 0, vendor: '', account, notes: 'Closed' });
       showLocalSaveToast('Both saved locally');
     }
 
