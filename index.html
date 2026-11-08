@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#2F5496">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Finance Ledger">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <title>Finance Ledger</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f6fa;
+      color: #1a1a1a;
+      -webkit-font-smoothing: antialiased;
+      overscroll-behavior: none;
+      height: 100%;
+    }
+    body { display: flex; flex-direction: column; min-height: 100vh; padding-bottom: env(safe-area-inset-bottom); }
+
+    /* ===== HEADER ===== */
+    header {
+      background: linear-gradient(135deg, #2F5496 0%, #1F4E78 100%);
+      color: #fff;
+      padding: calc(env(safe-area-inset-top) + 14px) 16px 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .header-row { display: flex; align-items: center; justify-content: space-between; }
+    .header-actions { display: flex; align-items: center; gap: 7px; }
+    h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    .header-meta { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.5);
+      display: inline-block; margin-right: 5px;
+      transition: background 0.3s;
+    }
+    .status-dot.offline { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.5); }
+    .status-dot.error { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+
+    .queue-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .queue-badge.hidden { display: none; }
+
+    .category-refresh-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 11px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.16);
+    }
+    .category-fetch-time {
+      min-width: 0;
+      font-size: 10px;
+      line-height: 1.3;
+      text-align: right;
+      color: rgba(255,255,255,0.78);
+    }
+    .category-refresh-btn {
+      flex: 0 0 auto;
+      padding: 7px 10px;
+      border: 1px solid rgba(255,255,255,0.24);
+      border-radius: 9px;
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .category-refresh-btn:disabled { opacity: 0.6; cursor: wait; }
+    .auth-btn.connected { background: rgba(74,222,128,0.22); }
+
+    /* ===== MAIN CONTENT ===== */
+    main {
+      flex: 1;
+      padding: 16px;
+      max-width: 600px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .quick-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .quick-grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+    .big-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 28px 16px;
+      font-size: 17px;
+      font-weight: 600;
+      background: #fff;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      transition: transform 0.1s, box-shadow 0.1s;
+      color: #1a1a1a;
+      min-height: 110px;
+    }
+    .big-btn:active {
+      transform: scale(0.97);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .big-btn .emoji { font-size: 38px; margin-bottom: 8px; }
+    .big-btn.tea { background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); }
+    .big-btn.lunch { background: linear-gradient(135deg, #FED7AA 0%, #FDBA74 100%); }
+    .big-btn.other { background: linear-gradient(135deg, #DBEAFE 0%, #93C5FD 100%); }
+
+    .small-btn {
+      padding: 12px 8px;
+      font-size: 12px;
+      font-weight: 500;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      cursor: pointer;
+      color: #555;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .small-btn:active { transform: scale(0.97); }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      margin: 18px 0 8px 4px;
+    }
+
+    /* ===== RECENT ===== */
+    .recent {
+      background: #fff;
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .recent-item {
+      padding: 10px 0;
+      border-bottom: 1px solid #f3f4f6;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .recent-item:last-child { border-bottom: none; }
+    .recent-cat { font-weight: 500; font-size: 14px; }
+    .recent-meta { font-size: 11px; color: #888; margin-top: 2px; }
+    .recent-amt { font-weight: 600; font-size: 14px; }
+    .recent-amt.income { color: #059669; }
+    .recent-amt.expense { color: #1a1a1a; }
+    .recent-amt.queued { color: #f59e0b; }
+
+    .pending-pill {
+      display: inline-block;
+      background: #FEF3C7;
+      color: #92400E;
+      padding: 1px 7px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .queue-actions { display: flex; gap: 6px; margin-top: 5px; }
+    .queue-action {
+      padding: 2px 7px;
+      border: 1px solid #d1d5db;
+      border-radius: 7px;
+      background: #fff;
+      color: #6b7280;
+      font-size: 10px;
+      cursor: pointer;
+    }
+    .empty-state {
+      text-align: center;
+      color: #aaa;
+      font-size: 13px;
+      padding: 20px;
+    }
+
+    /* ===== TOAST ===== */
+    .toast {
+      position: fixed;
+      bottom: calc(env(safe-area-inset-bottom) + 20px);
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #1a1a1a;
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 24px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      opacity: 0;
+      transition: opacity 0.2s, transform 0.2s;
+      z-index: 1500;
+      pointer-events: none;
+      max-width: 90%;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.success { background: #059669; }
+    .toast.error { background: #DC2626; }
+    .toast.queued { background: #D97706; }
+
+    /* ===== MODAL ===== */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 1000;
+      animation: fadeIn 0.15s ease-out;
+    }
+    .modal-overlay.active { display: flex; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+    .modal {
+      background: #fff;
+      border-radius: 20px 20px 0 0;
+      padding: 22px 20px calc(env(safe-area-inset-bottom) + 22px);
+      width: 100%;
+      max-width: 500px;
+      animation: slideUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+    .modal-handle {
+      width: 36px; height: 4px;
+      background: #d1d5db;
+      border-radius: 2px;
+      margin: -8px auto 16px;
+    }
+    .modal h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      font-weight: 600;
+      color: #2F5496;
+    }
+    .modal .subtitle {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 18px;
+    }
+    .modal label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      margin-bottom: 4px;
+      margin-top: 8px;
+    }
+    .modal input, .modal select {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px; /* 16px prevents iOS zoom */
+      border: 1.5px solid #e5e7eb;
+      border-radius: 10px;
+      background: #fff;
+      font-family: inherit;
+      margin-bottom: 4px;
+    }
+    .modal input:focus, .modal select:focus {
+      outline: none;
+      border-color: #2F5496;
+      box-shadow: 0 0 0 3px rgba(47,84,150,0.1);
+    }
+    .modal input.amount {
+      font-size: 28px;
+      font-weight: 700;
+      text-align: center;
+      padding: 16px;
+      border-color: #2F5496;
+    }
+    .chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin: 10px 0 14px;
+    }
+    .chip {
+      padding: 7px 14px;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      color: #555;
+    }
+    .chip:active { transform: scale(0.95); background: #e5e7eb; }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .modal-btn {
+      flex: 1;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .modal-btn:active { transform: scale(0.97); }
+    .btn-cancel { background: #f3f4f6; color: #555; }
+    .btn-save { background: #2F5496; color: #fff; }
+    .btn-save:disabled { background: #9ca3af; cursor: not-allowed; }
+
+    /* ===== LOADING SPINNER ===== */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #fff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>💰 Finance Ledger</h1>
+        <div class="header-meta">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Online</span>
+          <span class="queue-badge hidden" id="queueBadge">0 pending</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="category-refresh-btn" id="authBtn" onclick="connectGoogle()">Connect Google</button>
+        <button class="small-btn" onclick="syncNow()" aria-label="Sync now" style="padding:8px 12px;background:rgba(255,255,255,0.15);color:#fff;border:none;">↻</button>
+      </div>
+    </div>
+    <div class="category-refresh-row">
+      <button class="category-refresh-btn" id="categoryRefreshBtn" onclick="refreshCategoriesManually()">
+        ↻ Refresh categories
+      </button>
+      <span class="category-fetch-time" id="categoryFetchTime">Categories never fetched</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="section-label">Quick Add — Today</div>
+    <div class="quick-grid">
+      <button class="big-btn tea" onclick="openTeaModal()">
+        <span class="emoji">☕</span>
+        <span>Tea</span>
+      </button>
+      <button class="big-btn lunch" onclick="openLunchModal()">
+        <span class="emoji">🍱</span>
+        <span>Lunch</span>
+      </button>
+    </div>
+    <div class="quick-grid">
+      <button class="big-btn other" onclick="openOtherModal()" style="grid-column: 1 / -1; padding: 22px;">
+        <span class="emoji" style="font-size:32px;">➕</span>
+        <span>Other Entry</span>
+      </button>
+    </div>
+
+    <div class="quick-grid-3" style="margin-top:8px;">
+      <button class="small-btn" onclick="quickClosed('Tea')">☕ Closed</button>
+      <button class="small-btn" onclick="quickClosed('Lunch')">🍱 Closed</button>
+      <button class="small-btn" onclick="quickBoth()">Both Closed</button>
+    </div>
+
+    <div class="section-label">Recent Entries</div>
+    <div class="recent" id="recentList">
+      <div class="empty-state">Loading…</div>
+    </div>
+  </main>
+
+  <!-- ===== QUICK MODAL (Tea/Lunch) ===== -->
+  <div class="modal-overlay" id="quickModal" onclick="onBackdrop(event, 'quickModal')">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <h2 id="quickTitle">☕ Tea</h2>
+      <div class="subtitle">Today · Tap Save or press Enter</div>
+      <label>Amount (PKR)</label>
+      <input type="number" class="amount" id="quickAmount" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+      <div class="chips" id="quickChips"></div>
+      <div class="modal-actions">
+        <button class="modal-btn btn-cancel" onclick="closeModal('quickModal')">Cancel</button>
+        <button class="modal-btn btn-save" id="quickSaveBtn" onclick="saveQuick()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== OTHER MODAL ===== -->
+  <div class="modal-overlay" id="otherModal" onclick="onBackdrop(event, 'otherModal')">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-handle"></div>
+      <h2>➕ Other Entry</h2>
+      <div class="subtitle">Today · Pick category & amount</div>
+
+      <label>Category</label>
+      <select id="otherCategory">
+        <option value="">-- Select --</option>
+      </select>
+
+      <label>Amount (PKR)</label>
+      <input type="number" class="amount" id="otherAmount" inputmode="numeric" autocomplete="off">
+
+      <label>Note (optional)</label>
+      <input type="text" id="otherNote" autocomplete="off" placeholder="e.g. AC repair">
+
+      <div class="modal-actions">
+        <button class="modal-btn btn-cancel" onclick="closeModal('otherModal')">Cancel</button>
+        <button class="modal-btn btn-save" id="otherSaveBtn" onclick="saveOther()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TOAST ===== -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ============================================================
+    // CONFIG — public identifiers generated by Google (not secrets)
+    // ============================================================
+    const GOOGLE_CLIENT_ID = window.LEDGER_GOOGLE_CLIENT_ID || '297401950769-22luns4q68rlfr5blm4mq8maipqpfco8.apps.googleusercontent.com';
+    const SCRIPT_DEPLOYMENT_ID = window.LEDGER_SCRIPT_DEPLOYMENT_ID || 'AKfycbylPy8r_hrWN_FaYYDI6aq4LcOY4iucF586T7AKhPBPnLZ4ha9EvQEO_k4BLq8LqC5h';
+    const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+    const SCRIPT_API_URL = `https://script.googleapis.com/v1/scripts/${SCRIPT_DEPLOYMENT_ID}:run`;
+
+    // ============================================================
+    // INDEXEDDB QUEUE — survives crashes, offline, force-quit
+    // ============================================================
+    const DB_NAME = 'finance-ledger';
+    const DB_VERSION = 1;
+    const STORE_QUEUE = 'queue';
+    const STORE_CACHE = 'cache';
+
+    let db = null;
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => { db = req.result; resolve(db); };
+        req.onupgradeneeded = (e) => {
+          const d = e.target.result;
+          if (!d.objectStoreNames.contains(STORE_QUEUE)) {
+            d.createObjectStore(STORE_QUEUE, { keyPath: 'id' });
+          }
+          if (!d.objectStoreNames.contains(STORE_CACHE)) {
+            d.createObjectStore(STORE_CACHE, { keyPath: 'key' });
+          }
+        };
+      });
+    }
+
+    function dbPut(store, value) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).put(value);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    function dbGet(store, key) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readonly');
+        const req = tx.objectStore(store).get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    function dbGetAll(store) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readonly');
+        const req = tx.objectStore(store).getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    function dbDelete(store, key) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    // ============================================================
+    // STATE
+    // ============================================================
+    let categories = [];
+    let isSyncing = false;
+    let accessToken = '';
+    let accessTokenExpiresAt = 0;
+    let googleTokenClient = null;
+    let pendingAuthRequest = null;
+
+    function isGoogleConfigured() {
+      return GOOGLE_CLIENT_ID &&
+        SCRIPT_DEPLOYMENT_ID &&
+        !GOOGLE_CLIENT_ID.includes('YOUR_GOOGLE_') &&
+        !SCRIPT_DEPLOYMENT_ID.includes('YOUR_APPS_SCRIPT_');
+    }
+
+    function hasValidAccessToken() {
+      return Boolean(accessToken && Date.now() < accessTokenExpiresAt);
+    }
+
+    function updateAuthUi() {
+      const btn = document.getElementById('authBtn');
+      if (!btn) return;
+      if (!isGoogleConfigured()) {
+        btn.textContent = 'Setup required';
+        btn.classList.remove('connected');
+      } else if (hasValidAccessToken()) {
+        btn.textContent = '✓ Google';
+        btn.classList.add('connected');
+      } else {
+        btn.textContent = 'Connect Google';
+        btn.classList.remove('connected');
+      }
+    }
+
+    function waitForGoogleIdentity(timeoutMs = 10000) {
+      return new Promise((resolve, reject) => {
+        const started = Date.now();
+        const check = () => {
+          if (window.google && google.accounts && google.accounts.oauth2) return resolve();
+          if (Date.now() - started >= timeoutMs) return reject(new Error('Google sign-in could not load'));
+          setTimeout(check, 100);
+        };
+        check();
+      });
+    }
+
+    async function getGoogleTokenClient() {
+      if (googleTokenClient) return googleTokenClient;
+      if (!isGoogleConfigured()) throw new Error('Google OAuth configuration is incomplete');
+      await waitForGoogleIdentity();
+
+      googleTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: GOOGLE_SCOPES,
+        callback: response => {
+          if (!pendingAuthRequest) return;
+          if (response && response.access_token) {
+            accessToken = response.access_token;
+            const lifetimeSeconds = Number(response.expires_in) || 3600;
+            accessTokenExpiresAt = Date.now() + Math.max(60, lifetimeSeconds - 60) * 1000;
+            try { localStorage.setItem('finance-ledger-google-consent', 'granted'); } catch (_) {}
+            pendingAuthRequest.resolve(accessToken);
+          } else {
+            pendingAuthRequest.reject(new Error(response && response.error_description || 'Google authorization failed'));
+          }
+          pendingAuthRequest = null;
+          updateAuthUi();
+          updateNetworkStatus();
+        },
+        error_callback: error => {
+          if (pendingAuthRequest) {
+            pendingAuthRequest.reject(new Error(error && error.message || 'Google sign-in was cancelled'));
+            pendingAuthRequest = null;
+          }
+          updateAuthUi();
+        }
+      });
+      return googleTokenClient;
+    }
+
+    async function requestGoogleAccess() {
+      if (hasValidAccessToken()) return accessToken;
+      if (pendingAuthRequest) return pendingAuthRequest.promise;
+
+      const client = await getGoogleTokenClient();
+      let resolveRequest;
+      let rejectRequest;
+      const promise = new Promise((resolve, reject) => {
+        resolveRequest = resolve;
+        rejectRequest = reject;
+      });
+      const timeoutId = setTimeout(() => {
+        if (pendingAuthRequest && pendingAuthRequest.promise === promise) {
+          pendingAuthRequest = null;
+          rejectRequest(new Error('Google sign-in timed out'));
+          updateAuthUi();
+        }
+      }, 60000);
+
+      pendingAuthRequest = {
+        promise,
+        resolve: value => { clearTimeout(timeoutId); resolveRequest(value); },
+        reject: error => { clearTimeout(timeoutId); rejectRequest(error); }
+      };
+      let alreadyConsented = false;
+      try { alreadyConsented = localStorage.getItem('finance-ledger-google-consent') === 'granted'; } catch (_) {}
+      client.requestAccessToken({ prompt: alreadyConsented ? '' : 'consent' });
+      return promise;
+    }
+
+    async function connectGoogle() {
+      const btn = document.getElementById('authBtn');
+      btn.disabled = true;
+      try {
+        await requestGoogleAccess();
+        showToast('✓ Connected securely to Google', 'success');
+        await refreshCategories();
+        await syncQueue();
+        await fetchRecent();
+        await renderRecent();
+      } catch (error) {
+        showToast(error.message || 'Could not connect to Google', 'error');
+      } finally {
+        btn.disabled = false;
+        updateAuthUi();
+      }
+    }
+
+    function clearGoogleAccess() {
+      accessToken = '';
+      accessTokenExpiresAt = 0;
+      updateAuthUi();
+      updateNetworkStatus();
+    }
+
+    async function callFinanceApi(request) {
+      if (!hasValidAccessToken()) {
+        const error = new Error('Connect Google to synchronize');
+        error.code = 'AUTH_REQUIRED';
+        throw error;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      try {
+        const response = await fetch(SCRIPT_API_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ function: 'financeApi', parameters: [request], devMode: false }),
+          signal: controller.signal
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          clearGoogleAccess();
+          const error = new Error('Google authorization expired. Connect again.');
+          error.code = 'AUTH_REQUIRED';
+          throw error;
+        }
+        if (!response.ok) throw new Error(`Google API request failed (HTTP ${response.status})`);
+
+        const operation = await response.json();
+        if (operation.error) throw new Error(operation.error.message || 'Apps Script execution failed');
+        if (!operation.done || !operation.response) throw new Error('Apps Script did not return a result');
+        return operation.response.result;
+      } catch (error) {
+        if (error.name === 'AbortError') throw new Error('Google request timed out');
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    const suggestions = {
+      'Tea':       [50, 80, 100, 150, 200],
+      'Lunch':  [200, 250, 300, 400, 500]
+    };
+    const defaults = { 'Tea': 80, 'Lunch': 250 };
+
+    // ============================================================
+    // BOOT
+    // ============================================================
+    (async function init() {
+      try {
+        await openDB();
+      } catch (error) {
+        document.getElementById('recentList').innerHTML = '<div class="empty-state">Offline storage is unavailable in this browser.</div>';
+        showToast('Offline storage is unavailable', 'error');
+        return;
+      }
+
+      // Load cached categories instantly — no waiting for network
+      const cached = await dbGet(STORE_CACHE, 'categories');
+      if (cached && cached.value) {
+        categories = cached.value;
+        populateOtherCategory();
+        updateCategoryFetchTime(cached.fetchedAt);
+      }
+
+      // Render recent (queue + remote cache)
+      renderRecent();
+
+      // Update network status
+      updateNetworkStatus();
+      updateAuthUi();
+      window.addEventListener('online', () => { updateNetworkStatus(); syncQueue(); });
+      window.addEventListener('offline', updateNetworkStatus);
+
+      // Sync any pending queue on boot
+      syncQueue();
+
+      // Auto-sync every 30 seconds when online
+      setInterval(() => { if (navigator.onLine) syncQueue(); }, 30000);
+
+      // Register service worker for offline support
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      }
+    })();
+
+    // ============================================================
+    // NETWORK / SYNC
+    // ============================================================
+    function updateNetworkStatus() {
+      const dot = document.getElementById('statusDot');
+      const text = document.getElementById('statusText');
+      if (!navigator.onLine) {
+        dot.className = 'status-dot offline';
+        text.textContent = 'Offline';
+      } else if (!isGoogleConfigured()) {
+        dot.className = 'status-dot error';
+        text.textContent = 'Setup required';
+      } else if (!hasValidAccessToken()) {
+        dot.className = 'status-dot offline';
+        text.textContent = 'Connect to sync';
+      } else {
+        dot.className = 'status-dot';
+        text.textContent = isSyncing ? 'Syncing' : 'Online';
+      }
+      updateQueueBadge();
+    }
+
+    async function updateQueueBadge() {
+      const queue = await dbGetAll(STORE_QUEUE);
+      const badge = document.getElementById('queueBadge');
+      if (queue.length === 0) {
+        badge.classList.add('hidden');
+      } else {
+        badge.classList.remove('hidden');
+        const needsAttention = queue.filter(entry => entry.status === 'needs_attention').length;
+        badge.textContent = needsAttention
+          ? `${needsAttention} need attention`
+          : `${queue.length} pending`;
+      }
+    }
+
+    async function syncNow() {
+      if (!navigator.onLine) {
+        showToast('Offline — entries remain safely queued', 'queued');
+        return;
+      }
+      try {
+        await requestGoogleAccess();
+        showToast('Syncing…', '');
+        const categoryResult = await refreshCategories();
+        const syncResult = await syncQueue();
+        await fetchRecent();
+        await renderRecent();
+        const queue = await dbGetAll(STORE_QUEUE);
+        const needsAttention = queue.some(entry => entry.status === 'needs_attention');
+        if (needsAttention) {
+          showToast('Some entries need attention', 'error');
+        } else if (syncResult && syncResult.error) {
+          showToast(syncResult.error, 'error');
+        } else {
+          showToast(categoryResult.success ? '✓ Up to date' : '✓ Entries synced; categories unchanged', 'success');
+        }
+      } catch (error) {
+        showToast(error.message || 'Sync failed', 'error');
+      }
+    }
+
+    async function refreshCategories(interactive = false) {
+      if (!navigator.onLine) return { success: false, message: 'You are offline' };
+      if (!isGoogleConfigured()) return { success: false, message: 'Google setup is incomplete' };
+      try {
+        if (!hasValidAccessToken() && interactive) await requestGoogleAccess();
+        if (!hasValidAccessToken()) return { success: false, message: 'Connect Google to refresh categories' };
+        const data = await callFinanceApi({ action: 'getCategories' });
+        if (data.success && Array.isArray(data.categories)) {
+          const fetchedAt = Date.now();
+          categories = data.categories;
+          await dbPut(STORE_CACHE, { key: 'categories', value: categories, fetchedAt });
+          populateOtherCategory();
+          updateCategoryFetchTime(fetchedAt);
+          return { success: true, count: categories.length, fetchedAt };
+        }
+        return { success: false, message: data.message || 'Invalid category response' };
+      } catch (error) {
+        return { success: false, message: error.message || 'Could not refresh categories' };
+      }
+    }
+
+    async function refreshCategoriesManually() {
+      const btn = document.getElementById('categoryRefreshBtn');
+      btn.disabled = true;
+      btn.textContent = 'Refreshing…';
+
+      try {
+        const result = await refreshCategories(true);
+        if (result.success) {
+          showToast(`✓ ${result.count} categories refreshed`, 'success');
+        } else {
+          showToast(result.message, 'error');
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '↻ Refresh categories';
+        updateAuthUi();
+      }
+    }
+
+    function updateCategoryFetchTime(fetchedAt) {
+      const el = document.getElementById('categoryFetchTime');
+      if (!fetchedAt) {
+        el.textContent = 'Categories never fetched';
+        return;
+      }
+
+      const formatted = new Intl.DateTimeFormat('en-PK', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      }).format(new Date(fetchedAt));
+      el.textContent = `Categories updated ${formatted}`;
+    }
+
+    function populateOtherCategory() {
+      const sel = document.getElementById('otherCategory');
+      sel.innerHTML = '<option value="">-- Select --</option>';
+      categories.forEach(c => {
+        if (c.name === 'Tea' || c.name === 'Lunch') return;
+        const opt = document.createElement('option');
+        opt.value = c.name;
+        opt.textContent = c.type === 'Income' ? '↑ ' + c.name : c.name;
+        sel.appendChild(opt);
+      });
+    }
+
+    // ============================================================
+    // ENTRY HANDLING — queue first, sync after
+    // ============================================================
+    async function addEntry(entry) {
+      // Generate idempotency UUID
+      entry.id = entry.id || generateUUID();
+      entry.queuedAt = Date.now();
+      entry.attempts = 0;
+      entry.status = 'pending';
+      entry.nextAttemptAt = 0;
+
+      // Step 1: write to queue (durable) — this is the source of truth
+      await dbPut(STORE_QUEUE, entry);
+
+      // Step 2: update UI immediately (optimistic)
+      await updateQueueBadge();
+      await renderRecent();
+
+      // Step 3: try to sync now (fire and forget — queue handles retry)
+      syncQueue();
+
+      return entry.id;
+    }
+
+    async function syncQueue() {
+      if (isSyncing || !navigator.onLine || !hasValidAccessToken()) return { skipped: true };
+      isSyncing = true;
+      updateNetworkStatus();
+
+      try {
+        const queue = await dbGetAll(STORE_QUEUE);
+        if (queue.length === 0) return { success: true, synced: 0 };
+
+        const now = Date.now();
+        const eligible = queue
+          .filter(entry => entry.status !== 'needs_attention' && (entry.nextAttemptAt || 0) <= now)
+          .sort((a, b) => a.queuedAt - b.queuedAt)
+          // Send exactly one transaction per API call. This makes every queue
+          // item independently retryable and matches the backend limit.
+          .slice(0, 1);
+        if (eligible.length === 0) return { success: true, synced: 0 };
+
+        eligible.forEach(entry => { entry.status = 'syncing'; });
+        await Promise.all(eligible.map(entry => dbPut(STORE_QUEUE, entry)));
+        await renderRecent();
+
+        try {
+          const data = await callFinanceApi({
+            action: 'syncTransactions',
+            entries: eligible.map(entry => ({
+              id: entry.id,
+              date: entry.date,
+              category: entry.category,
+              amount: entry.amount,
+              notes: entry.notes || '',
+              vendor: entry.vendor || '',
+              account: entry.account || '',
+              allowDuplicate: entry.allowDuplicate === true
+            }))
+          });
+          if (!data || !data.success || !Array.isArray(data.results)) {
+            throw new Error(data && data.message || 'Invalid synchronization response');
+          }
+
+          const resultById = new Map(data.results.map(result => [result.id, result]));
+          let synced = 0;
+          for (const entry of eligible) {
+            const result = resultById.get(entry.id);
+            if (result && (result.status === 'synced' || result.status === 'duplicate')) {
+              await dbDelete(STORE_QUEUE, entry.id);
+              synced++;
+            } else if (result && result.status === 'possible_duplicate') {
+              entry.status = 'needs_attention';
+              entry.lastError = result.message || 'Possible duplicate of a transaction entered in the sheet';
+              entry.possibleDuplicate = result.match || null;
+              entry.possibleDuplicateRow = result.rowNumber || null;
+              entry.nextAttemptAt = 0;
+              await dbPut(STORE_QUEUE, entry);
+            } else if (result && result.status === 'error') {
+              entry.status = 'needs_attention';
+              entry.lastError = result.message || 'Rejected by the sheet';
+              entry.nextAttemptAt = 0;
+              await dbPut(STORE_QUEUE, entry);
+            } else {
+              scheduleRetry(entry, 'No result returned for this entry');
+              await dbPut(STORE_QUEUE, entry);
+            }
+          }
+
+          await fetchRecent();
+          return { success: true, synced };
+        } catch (error) {
+          if (error.code !== 'AUTH_REQUIRED') {
+            for (const entry of eligible) {
+              scheduleRetry(entry, error.message || 'Synchronization failed');
+              await dbPut(STORE_QUEUE, entry);
+            }
+          } else {
+            for (const entry of eligible) {
+              entry.status = 'pending';
+              await dbPut(STORE_QUEUE, entry);
+            }
+          }
+          return { success: false, error: error.message || 'Synchronization failed' };
+        }
+      } finally {
+        isSyncing = false;
+        updateNetworkStatus();
+        await updateQueueBadge();
+        await renderRecent();
+        // Continue draining an offline backlog sequentially. Yielding between
+        // calls keeps the UI responsive and never sends a multi-item batch.
+        const remaining = await dbGetAll(STORE_QUEUE);
+        const hasEligible = remaining.some(entry =>
+          entry.status !== 'needs_attention' && (entry.nextAttemptAt || 0) <= Date.now()
+        );
+        if (hasEligible && navigator.onLine && hasValidAccessToken()) {
+          setTimeout(() => syncQueue(), 250);
+        }
+      }
+    }
+
+    function scheduleRetry(entry, message) {
+      entry.attempts = (entry.attempts || 0) + 1;
+      const baseDelay = Math.min(30 * 60 * 1000, Math.pow(2, Math.min(entry.attempts, 8)) * 5000);
+      entry.nextAttemptAt = Date.now() + baseDelay + Math.floor(Math.random() * 3000);
+      entry.lastError = message;
+      entry.status = 'retry_wait';
+    }
+
+    async function retryQueued(id) {
+      const entry = await dbGet(STORE_QUEUE, id);
+      if (!entry) return;
+      entry.status = 'pending';
+      entry.attempts = 0;
+      entry.nextAttemptAt = 0;
+      entry.lastError = '';
+      await dbPut(STORE_QUEUE, entry);
+      await renderRecent();
+      if (navigator.onLine && hasValidAccessToken()) await syncQueue();
+    }
+
+    async function allowQueuedDuplicate(id) {
+      const entry = await dbGet(STORE_QUEUE, id);
+      if (!entry) return;
+      entry.allowDuplicate = true;
+      entry.status = 'pending';
+      entry.attempts = 0;
+      entry.nextAttemptAt = 0;
+      entry.lastError = '';
+      entry.possibleDuplicate = null;
+      entry.possibleDuplicateRow = null;
+      await dbPut(STORE_QUEUE, entry);
+      await renderRecent();
+      showToast('Duplicate approved — syncing once', 'queued');
+      if (navigator.onLine && hasValidAccessToken()) await syncQueue();
+    }
+
+    async function removeQueued(id) {
+      if (!window.confirm('Remove this unsynced transaction from this device?')) return;
+      await dbDelete(STORE_QUEUE, id);
+      await updateQueueBadge();
+      await renderRecent();
+      showToast('Unsynced transaction removed', 'queued');
+    }
+
+    // ============================================================
+    // RECENT LIST — show queue + recent submitted
+    // ============================================================
+    async function renderRecent() {
+      const div = document.getElementById('recentList');
+      const queue = await dbGetAll(STORE_QUEUE);
+      queue.sort((a, b) => b.queuedAt - a.queuedAt);
+
+      let items = [];
+      queue.forEach(q => {
+        items.push({
+          id: q.id,
+          category: q.category,
+          amount: q.amount,
+          notes: q.notes,
+          date: q.date,
+          pending: true,
+          status: q.status,
+          error: q.status === 'needs_attention',
+          lastError: q.lastError || '',
+          possibleDuplicateRow: q.possibleDuplicateRow || null
+        });
+      });
+
+      const queuedIds = new Set(queue.map(entry => entry.id));
+      const cached = await dbGet(STORE_CACHE, 'recent');
+      if (cached && cached.value) {
+        cached.value
+          .filter(entry => !entry.id || !queuedIds.has(entry.id))
+          .forEach(r => items.push({ ...r, pending: false }));
+      }
+
+      items = items.slice(0, 10);
+      if (items.length === 0) {
+        div.innerHTML = '<div class="empty-state">No entries yet. Tap Tea or Lunch above.</div>';
+        return;
+      }
+
+      div.innerHTML = items.map(r => {
+        const amtClass = r.pending ? 'queued' : (r.amount > 0 ? 'income' : 'expense');
+        const amtStr = r.pending
+          ? `Rs ${Math.abs(r.amount).toLocaleString('en-PK')}`
+          : formatAmount(r.amount);
+        const pill = r.error
+          ? '<span class="pending-pill" style="background:#FEE2E2;color:#991B1B;">needs attention</span>'
+          : r.status === 'retry_wait'
+            ? '<span class="pending-pill">waiting to retry</span>'
+            : r.pending
+              ? `<span class="pending-pill">${r.status === 'syncing' ? 'syncing' : 'pending'}</span>`
+              : '';
+        const queueActions = r.pending
+          ? `<div class="queue-actions">
+              ${r.possibleDuplicateRow ? `<button class="queue-action" onclick="allowQueuedDuplicate('${r.id}')">Add anyway</button>` : ''}
+              ${!r.possibleDuplicateRow && (r.error || r.status === 'retry_wait') ? `<button class="queue-action" onclick="retryQueued('${r.id}')">Retry</button>` : ''}
+              <button class="queue-action" onclick="removeQueued('${r.id}')">Remove</button>
+            </div>`
+          : '';
+        return `
+          <div class="recent-item">
+            <div>
+              <div class="recent-cat">${escapeHtml(r.category)}${pill}</div>
+              <div class="recent-meta">${escapeHtml(r.date)}${r.notes ? ' · ' + escapeHtml(r.notes) : ''}</div>
+              ${r.error && r.lastError ? `<div class="recent-meta" style="color:#991B1B;">${escapeHtml(r.lastError)}</div>` : ''}
+              ${queueActions}
+            </div>
+            <div class="recent-amt ${amtClass}">${amtStr}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function fetchRecent() {
+      if (!navigator.onLine || !hasValidAccessToken()) return { success: false };
+      try {
+        const data = await callFinanceApi({ action: 'getRecent' });
+        if (data.success && Array.isArray(data.recent)) {
+          await dbPut(STORE_CACHE, { key: 'recent', value: data.recent, fetchedAt: Date.now() });
+          return { success: true };
+        }
+        return { success: false, message: data.message };
+      } catch (error) {
+        return { success: false, message: error.message };
+      }
+    }
+
+    // ============================================================
+    // MODAL HANDLERS
+    // ============================================================
+    let quickContext = { category: '' };
+
+    function openTeaModal() { openQuickModal('Tea', '☕ Tea'); }
+    function openLunchModal() { openQuickModal('Lunch', '🍱 Lunch'); }
+
+    function openQuickModal(category, title) {
+      quickContext.category = category;
+      document.getElementById('quickTitle').textContent = title;
+      const input = document.getElementById('quickAmount');
+      input.value = defaults[category] || '';
+
+      const chipBox = document.getElementById('quickChips');
+      chipBox.innerHTML = '';
+      (suggestions[category] || []).forEach(amt => {
+        const chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.textContent = 'Rs ' + amt;
+        chip.onclick = () => { input.value = amt; input.focus(); };
+        chipBox.appendChild(chip);
+      });
+
+      document.getElementById('quickModal').classList.add('active');
+      setTimeout(() => { input.focus(); input.select(); }, 100);
+    }
+
+    function openOtherModal() {
+      document.getElementById('otherCategory').value = '';
+      document.getElementById('otherAmount').value = '';
+      document.getElementById('otherNote').value = '';
+      document.getElementById('otherModal').classList.add('active');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+    function onBackdrop(event, id) {
+      if (event.target.id === id) closeModal(id);
+    }
+
+    async function saveQuick() {
+      const raw = parseFloat(document.getElementById('quickAmount').value);
+      if (isNaN(raw) || raw < 0) { showToast('Enter a valid amount', 'error'); return; }
+
+      const btn = document.getElementById('quickSaveBtn');
+      if (btn.disabled) return;
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Saving';
+
+      const amount = raw === 0 ? 0 : -Math.abs(raw);
+      await addEntry({
+        date: todayString(),
+        category: quickContext.category,
+        amount: amount,
+        vendor: '',
+        notes: raw === 0 ? 'Closed' : ''
+      });
+
+      btn.disabled = false; btn.textContent = 'Save';
+      closeModal('quickModal');
+      showLocalSaveToast();
+    }
+
+    async function saveOther() {
+      const category = document.getElementById('otherCategory').value;
+      const raw = parseFloat(document.getElementById('otherAmount').value);
+      const note = document.getElementById('otherNote').value;
+      if (!category) { showToast('Pick a category', 'error'); return; }
+      if (isNaN(raw)) { showToast('Enter a valid amount', 'error'); return; }
+
+      const btn = document.getElementById('otherSaveBtn');
+      if (btn.disabled) return;
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Saving';
+
+      const cat = categories.find(c => c.name === category);
+      const isIncome = cat && cat.type === 'Income';
+      const amount = raw === 0 ? 0 : (isIncome ? Math.abs(raw) : -Math.abs(raw));
+
+      await addEntry({
+        date: todayString(),
+        category: category,
+        amount: amount,
+        vendor: '',
+        notes: note
+      });
+
+      btn.disabled = false; btn.textContent = 'Save';
+      closeModal('otherModal');
+      showLocalSaveToast();
+    }
+
+    async function quickClosed(category) {
+      await addEntry({
+        date: todayString(),
+        category: category,
+        amount: 0,
+        vendor: '',
+        notes: 'Closed'
+      });
+      showLocalSaveToast();
+    }
+
+    async function quickBoth() {
+      await addEntry({ date: todayString(), category: 'Tea', amount: 0, vendor: '', notes: 'Closed' });
+      await addEntry({ date: todayString(), category: 'Lunch', amount: 0, vendor: '', notes: 'Closed' });
+      showLocalSaveToast('Both saved locally');
+    }
+
+    // Enter key submits modals
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        if (document.getElementById('quickModal').classList.contains('active')) {
+          e.preventDefault(); saveQuick();
+        } else if (document.getElementById('otherModal').classList.contains('active')) {
+          if (document.activeElement.id === 'otherAmount' || document.activeElement.id === 'otherNote') {
+            e.preventDefault(); saveOther();
+          }
+        }
+      } else if (e.key === 'Escape') {
+        closeModal('quickModal');
+        closeModal('otherModal');
+      }
+    });
+
+    // ============================================================
+    // HELPERS
+    // ============================================================
+    function todayString() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    function generateUUID() {
+      if (crypto.randomUUID) return crypto.randomUUID();
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+    }
+
+    function formatAmount(n) {
+      if (n === 0) return 'Rs 0';
+      const abs = Math.abs(n).toLocaleString('en-PK');
+      return n < 0 ? `–Rs ${abs}` : `+Rs ${abs}`;
+    }
+
+    function showLocalSaveToast(label = 'Saved locally') {
+      if (!navigator.onLine) {
+        showToast(`✓ ${label} — offline`, 'queued');
+      } else if (!hasValidAccessToken()) {
+        showToast(`✓ ${label} — connect to sync`, 'queued');
+      } else {
+        showToast(`✓ ${label} — syncing`, 'success');
+      }
+    }
+
+    let toastTimer = null;
+    function showToast(msg, type) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + (type || '');
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+  </script>
+</body>
+</html>
