@@ -2,7 +2,7 @@
 // Caches the app shell for instant offline-first loads.
 // Bump CACHE_VERSION when you update index.html to force refresh.
 
-const CACHE_VERSION = 'v7';
+const CACHE_VERSION = 'v8';
 const CACHE_NAME = `finance-ledger-${CACHE_VERSION}`;
 
 const APP_SHELL = [
