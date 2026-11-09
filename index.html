@@ -483,6 +483,7 @@
     const SCRIPT_DEPLOYMENT_ID = window.LEDGER_SCRIPT_DEPLOYMENT_ID || 'AKfycbylPy8r_hrWN_FaYYDI6aq4LcOY4iucF586T7AKhPBPnLZ4ha9EvQEO_k4BLq8LqC5h';
     const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
     const SCRIPT_API_URL = `https://script.googleapis.com/v1/scripts/${SCRIPT_DEPLOYMENT_ID}:run`;
+    const LEDGER_TIME_ZONE = 'Asia/Karachi';
 
     // ============================================================
     // INDEXEDDB QUEUE — survives crashes, offline, force-quit
@@ -1381,8 +1382,14 @@
     // HELPERS
     // ============================================================
     function todayString() {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: LEDGER_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).formatToParts(new Date());
+      const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
+      return `${value.year}-${value.month}-${value.day}`;
     }
 
     function generateUUID() {
